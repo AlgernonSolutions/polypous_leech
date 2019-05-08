@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: creates a single security group for internal VPC traffic
+Parameters:
+  SecurityGroupName:
+    Type: String
+    Description: 'The name assigned to the generated security group'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'The ID of the VPC the Security Group is for'
+  AccessibleSubnetCidrs:
+    Type: CommaDelimitedList
+    Description: 'The CIDR ranges accessible to the security group'
+Resources:
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: !Ref SecurityGroupName
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref VpcCidr

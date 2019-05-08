@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'a traffic pattern for a VPC which has only an Internet Gateway for outbound traffic'
+Parameters:
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: 'the ID of the VPC that will host this traffic pattern'
+  FirstSubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: 'the ID of first Subnet'
+  SecondSubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: 'the ID of second Subnet'
+    Default: ''
+  ThirdSubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: 'the ID of third Subnet'
+    Default: ''
+  FourthSubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: 'the ID of fourth Subnet'
+    Default: ''
+Resources:
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties: {}
+  InternalRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VpcId
+  InternetRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref InternalRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+    DependsOn:
+      - InternetGateway
+  IgwAttach:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VpcId
+  AttachmentStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        RouteTableId: !Ref InternalRouteTable
+        FirstSubnetId: !Ref FirstSubnetId
+        SecondSubnetId: !Ref SecondSubnetId
+        ThirdSubnetId: !Ref ThirdSubnetId
+        FourthSubnetId: !Ref FourthSubnetId
+      TemplateURL: subnets_route_table.yaml
+Outputs:
+  InternalRouteTableId:
+    Description: 'the ID value for the internal route table, for subnet attachment'
+    Value: !Ref InternalRouteTable
+  InternetGatewayId:
+    Description: 'the ID value of the the generated Internet Gateway'
+    Value: !Ref InternetGateway

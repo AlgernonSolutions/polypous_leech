@@ -1,0 +1,41 @@
+{
+  "source_vertex": {
+    "internal_id": "1234568oiw29385fd",
+    "vertex_type": "AlgernonVertex",
+    "id_value": {
+      "property_name": "id_value",
+      "data_type": "N",
+      "property_value": "1001"
+    },
+    "identifier_stem": {
+      "property_name": "identifier_stem",
+      "data_type": "S",
+      "property_value": "#some_id_source#some_id_type#algernon#1001"
+    },
+    "vertex_properties": {
+      "local_properties": [
+        {
+          "property_name": "id_source",
+          "property_value": "some_id_source",
+          "data_type": "S"
+        }
+      ],
+      "sensitive_properties": [
+        {
+          "property_name": "secret_number",
+          "property_value": "666",
+          "data_type": "N",
+          "source_internal_id": "1234568oiw29385fd"
+        }
+      ],
+      "stored_properties": [
+        {
+          "property_name": "stored_html",
+          "storage_class": "S3",
+          "storage_uri": "s3://bucket_name/object_name",
+          "data_type": "HTML"
+        }
+      ]
+    }
+  }
+}

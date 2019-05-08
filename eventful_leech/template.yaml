@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: the leech pipeline for migrating information into the leech data system
+Parameters:
+  GraphEndpoint:
+    Type: String
+    Description: the read/write access point for the graph database
+    Default: 'leech-cluster.cluster-cnd32dx4xing.us-east-1.neptune.amazonaws.com'
+  GraphReadEndpoint:
+    Type: String
+    Description: the read only access point for the graph database
+    Default: 'leech-cluster.cluster-ro-cnd32dx4xing.us-east-1.neptune.amazonaws.com'
+  IndexTableName:
+    Type: String
+    Description: the name of the table used to hold indexes
+    Default: 'Indexes'
+  SensitivesTableName:
+    Type: String
+    Description: the name of the table used to hold PHI or other sensitive date
+    Default: 'Sensitives'
+  LayerArn:
+    Type: String
+    Description: the lambda layer containing the common dependencies
+    Default: 'arn:aws:lambda:us-east-1:726075243133:layer:algLayer:3'
+Globals:
+  Function:
+    Runtime: python3.6
+    Timeout: 300
+    Tracing: Active
+    Layers:
+      - !Ref LayerArn
+    Environment:
+      Variables:
+        LEECH_LISTENER_ARN: !Ref Listener
+        VPC_LEECH_LISTENER_ARN: !Ref VpcListener
+        INDEX_TABLE_NAME: !Ref IndexTableName
+        SENSITIVES_TABLE_NAME: !Ref SensitivesTableName
+        GRAPH_DB_ENDPOINT: !Ref GraphEndpoint
+        GRAPH_DB_READER_ENDPOINT: !Ref GraphReadEndpoint
+Resources:
+  Task:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: toll_booth.tasks.leech.task
+      Role: !ImportValue dev-worker-role-arn
+      CodeUri: src/
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EventQueue.Arn
+            BatchSize: 10
+  VpcTask:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: toll_booth.tasks.leech.task
+      Role: !ImportValue dev-worker-role-arn
+      CodeUri: src/
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue vpc-sg
+        SubnetIds:
+          - !ImportValue vpc-subnet-1
+          - !ImportValue vpc-subnet-2
+          - !ImportValue vpc-subnet-3
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt VpcEventQueue.Arn
+            BatchSize: 10
+  Listener:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: leech-listener
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !GetAtt EventQueue.Arn
+          Protocol: sqs
+  VpcListener:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: vpc-leech-listener
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !GetAtt VpcEventQueue.Arn
+          Protocol: sqs
+  VpcEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn:
+          !GetAtt DeadLetter.Arn
+        maxReceiveCount: 50
+      KmsMasterKeyId: !Ref MasterKey
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn:
+          !GetAtt DeadLetter.Arn
+        maxReceiveCount: 50
+      KmsMasterKeyId: !Ref MasterKey
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "SqsPolicy"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "SQS:SendMessage"
+            Resource: !GetAtt EventQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref Listener
+      Queues:
+        - !Ref EventQueue
+  VpcQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "VpcSqsPolicy"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "SQS:SendMessage"
+            Resource: !GetAtt VpcEventQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref VpcListener
+      Queues:
+        - !Ref VpcEventQueue
+  MasterKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "sns.amazonaws.com"
+                - "lambda.amazonaws.com"
+            Action:
+              - "kms:GenerateDataKey*"
+              - "kms:Decrypt"
+            Resource: "*"
+          - Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action:
+              - "kms:*"
+            Resource: "*"
+  DeadLetter:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      MessageRetentionPeriod: 1209600
+
+Outputs:
+  LeechFunction:
+    Description: "task function ARN"
+    Value: !GetAtt Task.Arn
+  VpcLeechfunction:
+    Description: "task function ARN for VPC sensitive tasks"
+    Value: !GetAtt VpcTask.Arn
+  ListenerArn:
+    Description: "the ARN endpoint for the task module"
+    Value: !Ref Listener
+    Export:
+      Name: !Sub "${AWS::StackName}-leech-listener"

@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  functionality related to the Credible Behavioral Health Software platform
+Parameters:
+  StorageBucket:
+    Type: String
+    Description: Location to store extracted Credible data
+    Default: algernonsolutions-gentlemen-dev
+  LayerArn:
+    Type: String
+    Description: the lambda layer containing the common dependencies
+    Default: 'arn:aws:lambda:us-east-1:726075243133:layer:algLayer:3'
+Globals:
+  Function:
+    Runtime: python3.6
+    Timeout: 300
+    CodeUri: ./
+    Tracing: Active
+    Layers:
+      - !Ref LayerArn
+    Environment:
+      Variables:
+        CREDIBLE_MANAGER_ARN: !Ref Listener
+        STORAGE_BUCKET: !Ref StorageBucket
+Resources:
+  Task:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: toll_booth.tasks.credible.task
+      ReservedConcurrentExecutions: 1
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EventQueue.Arn
+            BatchSize: 10
+  Listener:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: state-listener
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !GetAtt EventQueue.Arn
+          Protocol: sqs
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn:
+          !GetAtt DeadLetter.Arn
+        maxReceiveCount: 50
+      KmsMasterKeyId: !Ref MasterKey
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "CredibleSqsPolicy"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "SQS:SendMessage"
+            Resource: !GetAtt EventQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref Listener
+      Queues:
+        - !Ref EventQueue
+  MasterKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "sns.amazonaws.com"
+                - "lambda.amazonaws.com"
+            Action:
+              - "kms:GenerateDataKey*"
+              - "kms:Decrypt"
+            Resource: "*"
+          - Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action:
+              - "kms:*"
+            Resource: "*"
+  DeadLetter:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      MessageRetentionPeriod: 1209600
+
+Outputs:
+  CredibleFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt Task.Arn
+  ListenerArn:
+    Description: "the ARN endpoint for the task module"
+    Value: !Ref Listener

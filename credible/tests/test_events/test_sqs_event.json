@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "8b7953bd-ac1b-4a72-915c-e1e9915c34c3", 
+      "receiptHandle": "AQEBKdr3wPjDGewBvZvfpLe4elPT7heDcTeuehCe4m80bC8adU61hyEAbvazHDr9mxzh75ccvBk5VylDOo36sj12VfbeSXspIA22MY+Yya27g7CC3flribppDv7xeEcNbnUVqjYx4iIhgHKYPI9rm2uOGbEXyvTZDQD4WUxQjnlIfbsqoBa0ChZv7RPgqBTVk8ppp696oxdMnhWqVzHM8ib2+dc1N6tKgPchtSmQARbOjMDK6D4CxV25kgTVrdvA9l3NG4QpN3L4JuWK/PuNsrNojj85OkYRMmQ9wR8vQfNym8gVtEqtPT0Tryas4ColMmVFa9ENs3PDZh/m91FiQnHqPALu5iQAmVyI6l77uhoDTb3HrEzdgwjoAyaLITI+pnLFjFm5vh8BpBAWqZjV0Dw/FvBr7A9KPdGQ3MYfniMXgPc=", 
+      "body": "{\n \"Type\" : \"Notification\",\n \"MessageId\" : \"c67376c1-4109-522d-bedc-23f15425f08c\",\n \"TopicArn\" : \"arn:aws:sns:us-east-1:726075243133:credible-dev-Listener-F5PSJPEIMWGI\",\n \"Subject\" : \"new_event\",\n \"Message\" : \"{\\\"task_name\\\":\\\"get_client_ids\\\",\\\"task_args\\\":null,\\\"task_kwargs\\\":{\\\"id_source\\\":\\\"PSI\\\"}}\",\n \"Timestamp\" : \"2019-04-16T17:37:48.837Z\",\n \"SignatureVersion\" : \"1\",\n \"Signature\" : \"mcRwfDlwnlbj7XTSVku4cmbJehBtMJRBVXEvzV7+eaGT+KB4VcIBVR+lPJCJf7MU4oElWNnH1r3nlsyeDTPWlaj4G5hA/YHBXLUTyEx4HGpGtRLs0qkJJkXp0J8/Sm2++c0rSxpTA7yFIhssuenZ6rMAqGWOX6LCfmja/mcZWNX0xZKgNF2loS4SS8ddHkAVmPDgoDa5HLF0f/49J/Q9Xuq3XWESYLZRHOChgPPEVoi15U2yv3BLLp8mLpmbtacfWtpZQMGpaV1Q4CYVencSntrj9gsCaYhnQrgNbzoCdfqCyJoidIcnzxQKJvXv8obYNC1pqrmOkK38ypY2+SOLvg==\",\n \"SigningCertURL\" : \"https://sns.us-east-1.amazonaws.com/SimpleNotificationService-6aad65c2f9911b05cd53efda11f913f9.pem\",\n \"UnsubscribeURL\" : \"https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:726075243133:credible-dev-Listener-F5PSJPEIMWGI:88b6e019-6177-4864-ba37-9c7a1289cd80\"\n}",
+      "attributes": {
+        "ApproximateReceiveCount": "1", 
+        "SentTimestamp": "1555436268952", 
+        "SenderId": "AIDAIT2UOQQY3AUEKVGXU", 
+        "ApproximateFirstReceiveTimestamp": "1555436268967"
+      }, 
+      "messageAttributes": {}, 
+      "md5OfBody": "0d1717048a459c77774a978663943e20", 
+      "eventSource": "aws:sqs", 
+      "eventSourceARN": "arn:aws:sqs:us-east-1:726075243133:credible-dev-EventQueue-1E2KX244MZIHS", 
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

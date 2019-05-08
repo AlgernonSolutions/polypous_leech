@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  base lambda layer for all algernon modules
+Resources:
+  python:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      Timeout: 5
+      CodeUri: src/
+      Handler: algernon.app.lambda_handler
+  AlgernonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: python/
+      CompatibleRuntimes:
+        - python3.6
+Outputs:
+  LayerArn:
+    Description: ARN of the created layer
+    Value: !Ref AlgernonLayer
+    Export:
+      Name: AlgernonLayer

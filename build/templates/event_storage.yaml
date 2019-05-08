@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  This AWS Event Fork Pipelines app backs up events from the given Amazon SNS topic to an Amazon S3 bucket, using an Amazon Kinesis Data
+  Firehose stream.
+
+Parameters:
+  TopicArn:
+    Description: The ARN of the SNS topic to which this instance of the pipeline should be subscribed.
+    Type: String
+  VpcTopicArn:
+    Description: "[Optional] The ARN of the SNS topic used to handle VPC bound events."
+    Type: String
+    Default: ''
+  SubscriptionFilterPolicy:
+    Description: "[Optional] The SNS subscription filter policy, in JSON format, used for filtering the incoming events. The filter policy decides which events are processed by this pipeline. If you don’t enter any value, then no filtering is used, meaning all events are processed."
+    Type: String
+    Default: ''
+  StreamPrefix:
+    Description: "[Optional] The string prefix used for naming files stored in the S3 bucket. If you don’t enter any value, then no prefix is used."
+    Type: String
+    Default: ''
+  StreamCompressionFormat:
+    Description: "[Optional] The format used for compressing the incoming events. Three options are available, namely GZIP, ZIP, and SNAPPY. If you don’t enter any value, then data compression is disabled."
+    Type: String
+    AllowedValues:
+      - UNCOMPRESSED
+      - GZIP
+      - ZIP
+      - Snappy
+    Default: UNCOMPRESSED
+  BucketArn:
+    Description: "[Optional] The ARN of the S3 bucket to which incoming events are loaded. If you don't enter any value, then a new S3 bucket is created in your account."
+    Type: String
+    Default: ''
+  StreamBufferingIntervalInSeconds:
+    Description: "[Optional] The amount of seconds for which the stream should buffer incoming events before delivering them to the destination. Any integer value from 60 to 900 seconds. If you don't enter any value, then 300 is used."
+    Type: Number
+    MinValue: 60
+    MaxValue: 900
+    Default: 300
+  StreamBufferingSizeInMBs:
+    Description: "[Optional] The amount of data, in MB, that the stream should buffer before delivering them to the destination. Any integer value from 1 to 100. If you don't enter any value, then 5 is used."
+    Type: Number
+    MinValue: 1
+    MaxValue: 128
+    Default: 5
+  DataTransformationFunctionArn:
+    Description: "[Optional] The ARN of the Lambda function used for transforming the incoming events. If you don’t enter any value, then data transformation is disabled."
+    Type: String
+    Default: ''
+  LogLevel:
+    Type: String
+    Description: "[Optional] The level used for logging the execution of the Lambda function that polls events from the SQS queue. Four options are available, namely DEBUG, INFO, WARNING, and ERROR. If you don’t enter any value, then INFO is used."
+    Default: INFO
+
+Conditions:
+  DataTransformationEnabled:
+    !Not [!Equals [!Ref DataTransformationFunctionArn, '']]
+  CreateBackupBucket:
+    !Equals [!Ref BucketArn, '']
+  FilterPolicyEnabled:
+    !Not [!Equals [!Ref SubscriptionFilterPolicy, '']]
+  VpcBackupEnabled:
+    !Not [!Equals [!Ref VpcTopicArn, '']]
+
+Resources:
+  BackupSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sqs
+      Endpoint: !GetAtt BackupQueue.Arn
+      RawMessageDelivery: true
+      TopicArn: !Ref TopicArn
+
+  VpcBackupSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: VpcBackupEnabled
+    Properties:
+      Protocol: sqs
+      Endpoint: !GetAtt BackupQueue.Arn
+      RawMessageDelivery: true
+      TopicArn: !Ref VpcTopicArn
+
+  BackupQueue:
+    Type: AWS::SQS::Queue
+
+  BackupQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref BackupQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: BackupQueuePolicy
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sns.amazonaws.com
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt BackupQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref TopicArn
+
+  BackupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../code/
+      Handler: process_records.handler
+      Runtime: python3.7
+      Tracing: Active
+      Timeout: 5
+      Environment:
+        Variables:
+          FIREHOSE_DELIVERY_STREAM_NAME: !Ref BackupStream
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - firehose:PutRecord
+            Resource:
+              - !Sub ${BackupStream.Arn}
+      Events:
+        Mapping:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BackupQueue.Arn
+            BatchSize: 10
+
+  BackupStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamType: DirectPut
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !If [CreateBackupBucket, !GetAtt BackupBucket.Arn, !Ref BucketArn]
+        RoleARN: !GetAtt BackupStreamRole.Arn
+        Prefix: !Ref StreamPrefix
+        BufferingHints:
+          IntervalInSeconds: !Ref StreamBufferingIntervalInSeconds
+          SizeInMBs: !Ref StreamBufferingSizeInMBs
+        CompressionFormat: !Ref StreamCompressionFormat
+        ProcessingConfiguration: !If
+          - DataTransformationEnabled
+          - Enabled: true
+            Processors:
+              - Type: Lambda
+                Parameters:
+                  - ParameterName: LambdaArn
+                    ParameterValue: !Ref DataTransformationFunctionArn
+          - !Ref AWS::NoValue
+
+  BackupStreamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - firehose.amazonaws.com
+            Action:
+            - sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Sub ${AWS::AccountId}
+      Policies:
+        - PolicyName: fh-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !If [CreateBackupBucket, !GetAtt BackupBucket.Arn, !Ref BucketArn]
+                  - !Sub
+                      - ${BackupBucketArn}/*
+                      - BackupBucketArn: !If [CreateBackupBucket, !GetAtt BackupBucket.Arn, !Ref BucketArn]
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/*
+              - !If
+                  - DataTransformationEnabled
+                  - Effect: Allow
+                    Action:
+                      - lambda:InvokeFunction
+                    Resource:
+                      - !Ref DataTransformationFunctionArn
+                  - !Ref AWS::NoValue
+
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateBackupBucket
+
+  BackupSubscriptionFilterPolicy:
+    Type: AWS::Serverless::Application
+    Condition: FilterPolicyEnabled
+    Properties:
+      Location: storage/subscription_filter.yaml
+      Parameters:
+        TopicArn: !Ref TopicArn
+        SubscriptionArn: !Ref BackupSubscription
+        SubscriptionFilterPolicy: !Ref SubscriptionFilterPolicy
+        LogLevel: !Ref LogLevel
+
+Outputs:
+  BackupBucketName:
+    Condition: CreateBackupBucket
+    Description: Backup S3 bucket name
+    Value: !Ref BackupBucket
+  BackupBucketArn:
+    Condition: CreateBackupBucket
+    Description: Backup S3 bucket ARN
+    Value: !GetAtt BackupBucket.Arn

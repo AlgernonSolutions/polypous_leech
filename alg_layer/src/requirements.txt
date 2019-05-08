@@ -1,0 +1,10 @@
+jsonref
+botocore
+boto3
+pytz
+requests
+python-rapidjson
+bs4
+retrying
+pytest
+aws-xray-sdk

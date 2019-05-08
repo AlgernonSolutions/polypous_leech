@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: the basic template for deploying simple VPC setups
+Parameters:
+  ExistingSecurityGroupId:
+    Type: String
+    Description: 'to use an existing security group, specify it here, this parameter ignored when creating a VPC'
+    Default: ''
+  CreateInternetGateway:
+    Type: String
+    AllowedValues:
+      - 'True'
+      - 'False'
+    Description: 'Should the generated VPC have an Internet Gateway generated? Without one, the VPC will have no Internet connection'
+    Default: 'True'
+  CreateNatGateway:
+    Type: String
+    AllowedValues:
+      - 'True'
+      - 'False'
+    Description: 'Should the generated VPC have a NAT Gateway generated? This will secure objects within the first three subnets from inbound Internet access'
+    Default: 'True'
+  VpcCidr:
+    Type: String
+    Default: 192.168.0.0/22
+  FirstSubnetCidr:
+    Type: String
+    Default: 192.168.0.0/24
+  SecondSubnetCidr:
+    Type: String
+    Default: 192.168.1.0/24
+  ThirdSubnetCidr:
+    Type: String
+    Default: 192.168.2.0/24
+  FourthSubnetCidr:
+    Type: String
+    Description: 'If a NAT Gateway is generated, this subnet will be assigned as the public subnet'
+    Default: 192.168.3.0/24
+  FlowLogsBucketArn:
+    Type: String
+    Description: 'Send flow logs to an existing bucket. If left blank, create a bucket'
+    Default: ''
+  FlowLogsFolderName:
+    Type: String
+    Description: 'a folder within the Logs Bucket that will receive the flow logs'
+    Default: 'flow_logs'
+  FlowLogsBucketLoggingBucketArn:
+    Type: String
+    Description: 'Access to the bucket containing the flow logs is itself logged, specify an existing Bucket, or leave blank to make a new one'
+    Default: ''
+Conditions:
+  CreateIgw: !Equals [!Ref CreateInternetGateway, 'True']
+  CreateNat: !Equals [!Ref CreateNatGateway, 'True']
+  CreateFlowBucket: !Equals [!Ref FlowLogsBucketArn, '']
+  CreateFlowBucketLogBucket: !Equals [!Ref FlowLogsBucketLoggingBucketArn, '']
+  CreateNatOnly: !And
+    - !Condition CreateNat
+    - !Not [!Condition CreateIgw]
+  CreateIgwOnly: !And
+    - !Condition CreateIgw
+    - !Not [!Condition CreateNat]
+  CreateIgwAndNat: !And
+    - !Condition CreateIgw
+    - !Condition CreateNat
+Resources:
+  Vpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidr
+  FirstSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref FirstSubnetCidr
+      AvailabilityZone: !Join
+        - ""
+        - - !Ref "AWS::Region"
+          - "a"
+  SecondSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SecondSubnetCidr
+      AvailabilityZone: !Join
+        - ""
+        - - !Ref "AWS::Region"
+          - "b"
+  ThirdSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref ThirdSubnetCidr
+      AvailabilityZone: !Join
+        - ""
+        - - !Ref "AWS::Region"
+          - "c"
+  FourthSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref FourthSubnetCidr
+      AvailabilityZone: !Join
+        - ""
+        - - !Ref "AWS::Region"
+          - "d"
+  IgwOnlyPattern:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateIgwOnly
+    Properties:
+      Parameters:
+        VpcId: !Ref Vpc
+        FirstSubnetId: !Ref FirstSubnet
+        SecondSubnetId: !Ref SecondSubnet
+        ThirdSubnetId: !Ref ThirdSubnet
+        FourthSubnetId: !Ref FourthSubnet
+      TemplateURL: vpc/igw_only.yaml
+  NatOnlyPattern:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateNatOnly
+    Properties:
+      Parameters:
+        VpcId: !Ref Vpc
+        FirstSubnetId: !Ref FirstSubnet
+        SecondSubnetId: !Ref SecondSubnet
+        ThirdSubnetId: !Ref ThirdSubnet
+        PublicSubnetId: !Ref FourthSubnet
+      TemplateURL: vpc/nat_only.yaml
+  IgwAndNatPattern:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateIgwAndNat
+    Properties:
+      Parameters:
+        VpcId: !Ref Vpc
+        FirstSubnetId: !Ref FirstSubnet
+        SecondSubnetId: !Ref SecondSubnet
+        ThirdSubnetId: !Ref ThirdSubnet
+        PublicSubnetId: !Ref FourthSubnet
+      TemplateURL: vpc/igw_and_nat.yaml
+  LambdaSg:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: !Join
+        - '-'
+        - - !Ref Vpc
+          - 'default-sg'
+      GroupDescription: security group allowing lambda functions access to VPC resources
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref VpcCidr
+  FlowLogsBucketLoggingBucket:
+    Type: 'AWS::S3::Bucket'
+    Condition: CreateFlowBucketLogBucket
+    Properties:
+      AccessControl:  LogDeliveryWrite
+      BucketName: !Join
+        - '-'
+        - - !Ref Vpc
+          - flow-logs-access-logging
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+  FlowLogsBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join
+        - '-'
+        - - !Ref Vpc
+          - flow-logs
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+      LoggingConfiguration:
+        DestinationBucketName: !If [CreateFlowBucketLogBucket, !Ref FlowLogsBucketLoggingBucket, !Ref FlowLogsBucketLoggingBucketArn]
+        LogFilePrefix: !Join
+          - '-'
+          - - !Ref Vpc
+            - flow-logs-access-
+  VpcFlowLogs:
+    Type: AWS::EC2::FlowLog
+    Condition: CreateFlowBucket
+    Properties:
+      LogDestination: !Join
+        - /
+        - - !If [CreateFlowBucket, !GetAtt FlowLogsBucket.Arn, !Ref FlowLogsBucketArn]
+          - !Ref FlowLogsFolderName
+      LogDestinationType: 's3'
+      ResourceId: !Ref Vpc
+      ResourceType: 'VPC'
+      TrafficType: 'ALL'
+Outputs:
+  VpcId:
+    Description: 'The ARN of the host VPC'
+    Value: !Ref Vpc
+  SecurityGroupName:
+    Description: 'The name of the generated security group'
+    Value: !Ref LambdaSg
+  FlowLogsBucketArn:
+    Description: 'The ARN of the bucket where the flow logs for this VPC will be stored'
+    Value: !If [CreateFlowBucket, !GetAtt FlowLogsBucket.Arn, !Ref FlowLogsBucketArn]
+  FlowLogsBucketLoggingArn:
+    Description: 'The ARN where access to the FlowLogs Bucket is recorded'
+    Value: !If [CreateFlowBucketLogBucket, !GetAtt FlowLogsBucketLoggingBucket.Arn, !Ref FlowLogsBucketLoggingBucketArn]
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Addresses
+        Parameters:
+          - VpcCidr
+          - FirstSubnetCidr
+          - SecondSubnetCidr
+          - ThirdSubnetCidr
+          - FourthSubnetCidr
+      - Label:
+          default: "Access Configuration"
+        Parameters:
+          - LambdaSgName
+          - CreateInternetGateway
+          - CreateNatGateway
+    ParameterLabels:
+      LambdaSgName:
+        default: "What name should be assigned to the created security group?"
+      VpcCidr:
+        default: "What CIDR range should be assigned to the generated VPC?"
+      FirstSubnetCidr:
+        default: "What CIDR range should be assigned to the first generated subnet?"
+      SecondSubnetCidr:
+        default: "What CIDR range should be assigned to the second generated subnet?"
+      ThirdSubnetCidr:
+        default: "What CIDR range should be assigned to the third generated subnet?"
+      FourthSubnetCidr:
+        default: "What CIDR range should be assigned to the fourth generated subnet?"
+      CreateInternetGateway:
+        default: "Should the created VPC have an Internet Gateway attached?"
+      CreateNatGateway:
+        default: "Should the created VPC have a NAT Gateway included?"

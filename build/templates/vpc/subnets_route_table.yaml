@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'convenience template to associate subnet(s) to a route table'
+Parameters:
+  RouteTableId:
+    Type: String
+    Description: 'the ID of the Route Table to attach the subnet(s) to'
+  FirstSubnetId:
+    Type: String
+    Description: 'the ID of first Subnet'
+  SecondSubnetId:
+    Type: String
+    Description: 'the ID of second Subnet'
+    Default: ''
+  ThirdSubnetId:
+    Type: String
+    Description: 'the ID of third Subnet'
+    Default: ''
+  FourthSubnetId:
+    Type: String
+    Description: 'the ID of fourth Subnet'
+    Default: ''
+Conditions:
+  AttachSecond: !Not [!Equals [!Ref SecondSubnetId, '']]
+  AttachThird: !Not [!Equals [!Ref ThirdSubnetId, '']]
+  AttachFourth: !Not [!Equals [!Ref FourthSubnetId, '']]
+Resources:
+  FirstSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      SubnetId: !Ref FirstSubnetId
+  SecondSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AttachSecond
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      SubnetId: !Ref SecondSubnetId
+  ThirdSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AttachThird
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      SubnetId: !Ref ThirdSubnetId
+  FourthSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AttachFourth
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      SubnetId: !Ref FourthSubnetId
